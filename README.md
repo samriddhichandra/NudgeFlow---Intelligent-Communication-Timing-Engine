@@ -311,6 +311,17 @@ The dashboard is both a product demo and a manual test surface.
 
 For the strongest personalized demo, create several WhatsApp nudges for the same user at around 7 PM, submit `REPLIED` delivery reports, then create an event for that user. The recommended time should favor the evening WhatsApp window and the explanation should reflect the historical engagement.
 
+## Demo screenshots
+
+The following screenshots show the NudgeFlow dashboard and its core workflows.
+
+| Screenshot | Description |
+| --- | --- |
+| ![NudgeFlow dashboard - event creation](assests/Screenshot%202026-08-04%20105249.png) | Create an event and view the immediate scheduling decision. |
+| ![NudgeFlow dashboard - nudge creation](assests/Screenshot%202026-08-04%20105328.png) | Record historical or newly sent communications. |
+| ![NudgeFlow dashboard - delivery report](assests/Screenshot%202026-08-04%20105440.png) | Submit a delivery report to update the engagement profile. |
+| ![NudgeFlow dashboard - analytics](assests/Screenshot%202026-08-04%20105457.png) | Inspect engagement by time window and channel. |
+
 ## Testing and quality checks
 
 Backend tests use an in-memory SQLite database and require no running PostgreSQL server:
