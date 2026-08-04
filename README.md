@@ -4,7 +4,6 @@ NudgeFlow is an explainable, event-driven decision service that recommends the *
 
 It is deliberately provider-agnostic: NudgeFlow decides *when* and *how* to contact someone; a downstream scheduler or messaging provider is responsible for actually delivering the message.
 
-![NudgeFlow workspace](frontend/public/demo/workspace.png)
 
 ## Why it exists
 
