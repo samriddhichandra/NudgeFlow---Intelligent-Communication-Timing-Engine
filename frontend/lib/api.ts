@@ -52,7 +52,15 @@ async function handleResponse<T>(res: Response): Promise<T> {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail || detail;
+      if (Array.isArray(body.detail)) {
+        detail = body.detail
+          .map((issue: { loc?: string[]; msg?: string }) =>
+            `${issue.loc?.slice(-1).join(".") || "Request"}: ${issue.msg || "Invalid value"}`
+          )
+          .join("; ");
+      } else {
+        detail = body.detail || detail;
+      }
     } catch {
       // ignore
     }

@@ -40,7 +40,7 @@ export default function Home() {
               aria-label={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
               title={`Switch to ${theme === "dark" ? "light" : "dark"} theme`}
             >
-              <span aria-hidden="true">{theme === "dark" ? "☀" : "☾"}</span>
+              <span aria-hidden="true">{theme === "dark" ? "☀︎︎" : "☾"}</span>
               <span className="hidden sm:inline">{theme === "dark" ? "Light" : "Dark"}</span>
             </button>
             <a href="#workspace" className="nav-cta rounded-full px-4 py-2 text-sm font-semibold">Open workspace</a>

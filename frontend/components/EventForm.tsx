@@ -46,8 +46,8 @@ export default function EventForm({ onCreated }: { onCreated?: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card space-y-4">
-      <div>
+    <form onSubmit={handleSubmit} className="card flex h-full flex-col space-y-4">
+      <div className="min-h-[58px]">
         <h3 className="text-base font-semibold text-slate-900">Create Event</h3>
         <p className="text-sm text-slate-500">
           Log a new user event that may trigger a nudge.
@@ -99,7 +99,7 @@ export default function EventForm({ onCreated }: { onCreated?: () => void }) {
         </select>
       </div>
 
-      <button type="submit" className="btn-primary w-full" disabled={loading}>
+      <button type="submit" className="btn-primary !mt-auto w-full" disabled={loading}>
         {loading ? "Creating..." : "Create Event"}
       </button>
 

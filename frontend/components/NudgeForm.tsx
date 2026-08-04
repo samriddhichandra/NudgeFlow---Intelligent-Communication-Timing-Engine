@@ -11,14 +11,16 @@ export default function NudgeForm({ onCreated }: { onCreated?: () => void }) {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [createdNudgeId, setCreatedNudgeId] = useState<string | null>(null);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setMessage(null);
+    setCreatedNudgeId(null);
     try {
-      await createNudge({
+      const nudge = await createNudge({
         user_id: userId,
         channel,
         sent_time: sentTime
@@ -26,6 +28,7 @@ export default function NudgeForm({ onCreated }: { onCreated?: () => void }) {
           : new Date().toISOString(),
         status,
       });
+      setCreatedNudgeId(nudge.id);
       setMessage("Nudge recorded successfully.");
       onCreated?.();
     } catch (err) {
@@ -36,8 +39,8 @@ export default function NudgeForm({ onCreated }: { onCreated?: () => void }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card space-y-4">
-      <div>
+    <form onSubmit={handleSubmit} className="card flex h-full flex-col space-y-4">
+      <div className="min-h-[58px]">
         <h3 className="text-base font-semibold text-slate-900">Create Nudge</h3>
         <p className="text-sm text-slate-500">
           Record a communication attempt sent to a user.
@@ -93,12 +96,23 @@ export default function NudgeForm({ onCreated }: { onCreated?: () => void }) {
         </select>
       </div>
 
-      <button type="submit" className="btn-primary w-full" disabled={loading}>
+      <button type="submit" className="btn-primary !mt-auto w-full" disabled={loading}>
         {loading ? "Saving..." : "Create Nudge"}
       </button>
 
       {message && <p className="text-sm text-emerald-600">{message}</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}
+      {createdNudgeId && (
+        <div className="rounded-xl border border-brand-500/20 bg-brand-50 p-3 text-sm text-slate-700">
+          <p className="font-semibold text-slate-900">Nudge ID created</p>
+          <p className="mt-1 break-all font-mono text-xs text-slate-600">
+            {createdNudgeId}
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            Copy this ID into the Delivery Report form when a provider outcome arrives.
+          </p>
+        </div>
+      )}
     </form>
   );
 }

@@ -17,6 +17,10 @@ export default function DeliveryReportForm({
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(nudgeId)) {
+      setError("Enter a valid nudge UUID. Create a nudge first, then copy its Nudge ID here.");
+      return;
+    }
     setLoading(true);
     setError(null);
     setMessage(null);
@@ -38,13 +42,13 @@ export default function DeliveryReportForm({
   }
 
   return (
-    <form onSubmit={handleSubmit} className="card space-y-4">
-      <div>
+    <form onSubmit={handleSubmit} className="card flex h-full flex-col space-y-4">
+      <div className="min-h-[58px]">
         <h3 className="text-base font-semibold text-slate-900">
           Submit Delivery Report
         </h3>
         <p className="text-sm text-slate-500">
-          Update the status of a previously sent nudge.
+          Update the status of a previously sent nudge using its Nudge ID.
         </p>
       </div>
 
@@ -84,7 +88,7 @@ export default function DeliveryReportForm({
         />
       </div>
 
-      <button type="submit" className="btn-primary w-full" disabled={loading}>
+      <button type="submit" className="btn-primary !mt-auto w-full" disabled={loading}>
         {loading ? "Submitting..." : "Submit Report"}
       </button>
 
