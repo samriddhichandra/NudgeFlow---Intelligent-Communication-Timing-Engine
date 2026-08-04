@@ -1,109 +1,178 @@
-# NudgeFlow - Intelligent Communication Timing Engine
+# NudgeFlow — Intelligent Communication Timing Engine
 
-NudgeFlow is an event-driven decision service that recommends the best **time** and **channel** for the next customer communication. It learns from a person's previous nudges and delivery outcomes, then produces an explainable recommendation for a newly received event such as a payment due date, cart abandonment, renewal, signup, or support follow-up.
+NudgeFlow is an explainable, event-driven decision service that recommends the **best channel** and **next send time** for a customer communication. It turns historical nudge outcomes—delivery, opens, clicks, replies, and failures—into a simple, inspectable engagement profile.
 
-It is designed as an assignment-quality implementation of the core workflow behind a provider-agnostic engagement platform:
+It is deliberately provider-agnostic: NudgeFlow decides *when* and *how* to contact someone; a downstream scheduler or messaging provider is responsible for actually delivering the message.
 
-1. An upstream system sends a customer event.
-2. The engine evaluates recent nudge and delivery history for that customer.
-3. It recommends when and how to nudge them next.
-4. Delivery reports update the customer's engagement profile for future decisions.
+![NudgeFlow workspace](frontend/public/demo/workspace.png)
 
-The repository contains a FastAPI service, PostgreSQL schema and migrations, a Next.js dashboard, API documentation, Docker configuration, sample data, and automated tests.
+## Why it exists
+
+Customer events such as a payment due date, abandoned cart, renewal, signup, or support follow-up have different urgency, but a poorly timed message can still be ignored. NudgeFlow closes that feedback loop:
+
+1. Record the customer event.
+2. Record each outbound nudge and its channel.
+3. Ingest provider delivery reports as they arrive.
+4. Score recent engagement by time window and channel.
+5. Return an explainable recommendation for the next communication.
 
 ## Product capabilities
 
-- Ingest customer events with a type, timestamp, and business priority.
-- Record outbound nudges across WhatsApp, email, SMS, and push.
-- Accept delivery reports such as delivered, opened, clicked, replied, and failed.
-- Prevent late provider reports from downgrading stronger engagement already observed.
-- Recommend a personalized send time and channel from the previous 30 days of behavior.
-- Return an event-specific safe fallback schedule when no history exists.
-- Explain why the recommendation was made and expose a confidence score.
-- Visualize engagement by time window and channel in a responsive dashboard.
-- Switch the dashboard between Deep Zinc dark mode and Warm Slate light mode.
+- Event ingestion with a user ID, event type, event timestamp, and priority.
+- Four supported channels: WhatsApp, email, SMS, and push.
+- Five engagement states: delivered, opened, clicked, replied, and failed.
+- Recency-weighted scoring across seven time buckets.
+- Safe fallback scheduling for events belonging to users with no engagement history.
+- A monotonic delivery-status update rule that protects against out-of-order webhooks.
+- User analytics for engagement by time bucket and channel.
+- A responsive Next.js workspace for manually exercising the full workflow.
+- PostgreSQL migrations, Docker Compose, seed data, API docs, and automated backend tests.
 
-> The project is a decisioning engine. It does not send a WhatsApp, SMS, email, or push notification itself. A production delivery worker/provider integration would consume the returned recommendation and create the actual message.
+> **Current scope:** this repository is a decisioning engine and demo workspace. It does not send messages, manage provider credentials, authenticate users, or run a background scheduler.
 
-## Demo flow
+## Architecture
 
-```text
-Customer event
-     |
-     v
-POST /api/events
-     |
-     v
-GET /api/events/{event_id}/recommendation
-     |
-     v
-Recommended time + channel + confidence + reason
-     |
-     v
-Send through a communication provider (outside this service)
-     |
-     v
-POST /api/delivery-reports
-     |
-     +--> Future recommendations improve from the new outcome
+```mermaid
+flowchart LR
+    U[Operator / Upstream product] -->|Events, nudges, reports| W[Next.js dashboard]
+    U -->|REST API| A
+    W -->|HTTP /api/*| A[FastAPI application]
+
+    subgraph API[Backend — FastAPI]
+        A --> R[API routers]
+        R --> S[Services]
+        S --> Q[Repositories]
+        S --> E[Recommendation engine]
+        E --> B[Time buckets + scoring]
+        Q --> M[SQLAlchemy models]
+    end
+
+    M --> D[(PostgreSQL)]
+    D --> M
+    P[Delivery provider / webhook<br/>integration — external] -->|Delivery report| A
+    E -->|Time, channel, confidence, reason| A
+    A -->|Recommendation| W
+
+    subgraph Runtime[Local Docker Compose]
+        W
+        A
+        D
+    end
 ```
 
-## Technology stack
+### Decision lifecycle
 
-| Area | Technology |
-| --- | --- |
-| API | Python, FastAPI, Pydantic v2 |
-| Persistence | PostgreSQL 16, SQLAlchemy 2.0, Alembic |
-| Local demo database | SQLite (optional, no Docker required) |
-| Frontend | Next.js 15, React 18, TypeScript, Tailwind CSS |
-| Runtime | Docker and Docker Compose |
-| Tests | Pytest, FastAPI TestClient, in-memory SQLite |
+```mermaid
+sequenceDiagram
+    participant Client as Product / Dashboard
+    participant API as FastAPI
+    participant DB as PostgreSQL
+    participant Engine as Recommendation service
+    participant Provider as Messaging provider (external)
 
-## Repository layout
+    Client->>API: POST /api/events
+    API->>DB: Persist event
+    Client->>API: GET /api/events/{id}/recommendation
+    API->>Engine: Request decision for event user
+    Engine->>DB: Read recent nudges
+    Engine-->>API: channel, time, confidence, reason
+    API-->>Client: Explainable recommendation
+    Client->>Provider: Schedule/send externally
+    Provider->>API: POST /api/delivery-reports
+    API->>DB: Store report and upgrade nudge status
+    Note over DB,Engine: The next decision incorporates the new outcome
+```
+
+## Repository map
 
 ```text
 .
 ├── backend/
 │   ├── app/
-│   │   ├── routers/          # HTTP endpoints
-│   │   ├── services/         # Recommendation and analytics logic
-│   │   ├── repositories/     # Database queries and updates
-│   │   ├── models/           # SQLAlchemy models
-│   │   ├── schemas/          # Pydantic request/response contracts
-│   │   └── utils/            # Time buckets and scoring helpers
-│   ├── alembic/              # PostgreSQL migrations
-│   ├── tests/                # Automated API and behavior tests
-│   └── seed.py               # Demo-data generator
+│   │   ├── routers/          # HTTP endpoints and validation boundaries
+│   │   ├── services/         # Event, nudge, analytics, recommendation logic
+│   │   ├── repositories/     # SQLAlchemy persistence operations
+│   │   ├── models/           # Event, nudge, and delivery-report tables
+│   │   ├── schemas/          # Pydantic request and response contracts
+│   │   └── utils/            # Time buckets and engagement scoring helpers
+│   ├── alembic/              # Database migration environment and revisions
+│   ├── tests/                # API and behaviour tests
+│   ├── Dockerfile
+│   ├── requirements.txt
+│   └── seed.py               # Disposable demo-data generator
 ├── frontend/
-│   ├── app/                  # Next.js App Router and global theme styles
-│   ├── components/           # Forms, recommendation card, analytics
-│   └── lib/api.ts            # Typed API client
-├── docker-compose.yml
-└── .env.example
+│   ├── app/                  # Next.js App Router entry point and global styles
+│   ├── components/           # Event, nudge, report, analytics, decision UI
+│   ├── lib/api.ts            # Typed browser API client
+│   ├── public/demo/          # README and UI preview assets
+│   └── Dockerfile
+├── assests/                  # Product screenshots (legacy folder name retained)
+├── docker-compose.yml        # Frontend, API, and PostgreSQL development stack
+├── vercel.json               # Frontend/backend route configuration for Vercel
+└── .env.example              # Docker PostgreSQL defaults
 ```
 
-## How recommendations work
+## Data model
 
-### Time windows
+```mermaid
+erDiagram
+    EVENTS {
+        uuid id PK
+        string user_id
+        string event_type
+        datetime event_time
+        enum priority
+        datetime created_at
+    }
+    NUDGES {
+        uuid id PK
+        string user_id
+        enum channel
+        datetime sent_time
+        enum status
+        datetime created_at
+    }
+    DELIVERY_REPORTS {
+        uuid id PK
+        uuid nudge_id FK
+        string status
+        datetime report_time
+        string meta
+    }
+    NUDGES ||--o{ DELIVERY_REPORTS : receives
+```
 
-Historical nudges are grouped by the hour at which they were sent:
+`events` and `nudges` both use `user_id` as their application-level correlation key. A delivery report belongs to exactly one nudge through `nudge_id`. The initial Alembic migration creates indexes on `events.user_id` and `nudges.user_id`.
 
-| Window | Hours |
+### Enumerations
+
+| Field | Allowed values |
 | --- | --- |
-| 6 AM - 9 AM | 06:00 - 08:59 |
-| 9 AM - 12 PM | 09:00 - 11:59 |
-| 12 PM - 3 PM | 12:00 - 14:59 |
-| 3 PM - 6 PM | 15:00 - 17:59 |
-| 6 PM - 9 PM | 18:00 - 20:59 |
-| 9 PM - 12 AM | 21:00 - 23:59 |
+| Event priority | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
+| Nudge channel | `WHATSAPP`, `EMAIL`, `SMS`, `PUSH` |
+| Nudge/report status | `DELIVERED`, `OPENED`, `CLICKED`, `REPLIED`, `FAILED` |
 
-An overnight bucket is retained for analytics, but it is never selected as a recommended sending window.
+## Recommendation engine
 
-### Engagement scoring
+The engine examines a user's nudges within a configurable lookback window (30 days by default). It does not use a black-box model; every decision is deterministic and can be explained from stored records.
 
-Each nudge receives a value according to its latest known outcome:
+### 1. Group communications by send-time bucket
 
-| Delivery status | Score |
+| Key | Local hour range | Representative recommended hour | Eligible for recommendation |
+| --- | --- | ---: | --- |
+| `6AM-9AM` | 06:00–08:59 | 07:00 | Yes |
+| `9AM-12PM` | 09:00–11:59 | 10:00 | Yes |
+| `12PM-3PM` | 12:00–14:59 | 13:00 | Yes |
+| `3PM-6PM` | 15:00–17:59 | 16:00 | Yes |
+| `6PM-9PM` | 18:00–20:59 | 19:00 | Yes |
+| `9PM-12AM` | 21:00–23:59 | 22:00 | Yes |
+| `12AM-6AM` | 00:00–05:59 | 02:00 | Analytics only |
+
+Time buckets are calculated from the hour stored in `sent_time`. The implementation does not yet apply an individual user timezone; production deployments should store an IANA timezone per user and score/send in that local timezone.
+
+### 2. Convert outcomes into engagement signals
+
+| Latest nudge status | Base score |
 | --- | ---: |
 | `REPLIED` | 5 |
 | `CLICKED` | 3 |
@@ -111,62 +180,67 @@ Each nudge receives a value according to its latest known outcome:
 | `DELIVERED` | 1 |
 | `FAILED` | -3 |
 
-More recent evidence matters more:
+Recent behavior counts more. For each nudge:
 
 ```text
 recency_weight = 1 / (days_old + 1)
-weighted_score = engagement_score * recency_weight
+weighted_score = base_status_score × recency_weight
 ```
 
-For the selected lookback period (30 days by default), the service sums weighted scores by time window and channel. It selects the strongest non-overnight time window and the strongest channel with positive engagement. Confidence is the winning time-window score divided by the total absolute score across windows.
+The service sums those weighted scores separately by time bucket and channel. It chooses the highest-scoring non-overnight bucket and the highest-scoring channel with a positive score. If all channel scores are non-positive, it falls back to WhatsApp.
 
-### Delivery-report behavior
+### 3. Calculate confidence and next send time
 
-Delivery reports are validated against the supported status values. Status updates are monotonic:
+```text
+confidence = best_eligible_bucket_score / sum(abs(all eligible bucket scores))
+```
+
+Confidence is rounded to two decimal places and bounded between `0.0` and `1.0`. The selected time is the next occurrence of that bucket's representative hour; it is never scheduled before the associated event timestamp.
+
+### Cold-start behavior
+
+An event recommendation always returns a decision, even with no history:
+
+- Channel: `WHATSAPP`
+- Confidence: `0.0`
+- Timing: five minutes from now when it is daytime/evening, otherwise 09:00 in the next safe morning window
+- Reason: explicitly identifies the choice as a fallback
+
+By contrast, a user-only request (`GET /api/recommendation/{user_id}`) returns `404` when the user has no recent nudge history, because it has no event to anchor a fallback schedule.
+
+### Delivery-report ordering rule
+
+Provider webhooks can arrive late or out of order. NudgeFlow stores every report, but only updates the nudge's current status when the incoming state is at least as strong as the stored state:
 
 ```text
 FAILED < DELIVERED < OPENED < CLICKED < REPLIED
 ```
 
-For example, if a `REPLIED` report was recorded and a delayed `DELIVERED` webhook arrives afterwards, the nudge remains `REPLIED`. This keeps out-of-order provider webhooks from corrupting the learning signal.
+For example, a delayed `DELIVERED` report cannot overwrite a previously observed `REPLIED` state. This protects the data used for future recommendations.
 
-### New customers and events
+## API
 
-An event-specific recommendation always returns a decision. If the person has no recent history, the engine returns:
+When the API is running, interactive OpenAPI documentation is available at [`/docs`](http://localhost:8000/docs).
 
-- Channel: `WHATSAPP`
-- Confidence: `0.0`
-- Timing: five minutes from now during a safe daytime/evening window, or 9:00 AM if the event is received overnight
-- Reason: a clear explanation that the result is a fallback rather than a learned preference
-
-When an event timestamp is in the future, the recommendation is never scheduled before that event.
-
-## API reference
-
-Interactive API documentation is available at `http://localhost:8000/docs` while the backend is running.
-
-| Method | Endpoint | Purpose |
+| Method | Endpoint | Description |
 | --- | --- | --- |
-| `GET` | `/health` | Liveness check |
-| `POST` | `/api/events` | Create a customer event |
-| `GET` | `/api/events` | List events; filter with `user_id` |
-| `GET` | `/api/events/{event_id}` | Retrieve an event |
-| `GET` | `/api/events/{event_id}/recommendation` | Get the recommended next nudge for an event |
+| `GET` | `/health` | Liveness response: `{"status":"ok"}` |
+| `POST` | `/api/events` | Create an event |
+| `GET` | `/api/events` | List events; optional `user_id`, `skip`, `limit` |
+| `GET` | `/api/events/{event_id}` | Fetch one event |
+| `GET` | `/api/events/{event_id}/recommendation` | Produce event-anchored decision; optional `lookback_days` |
 | `POST` | `/api/nudges` | Record an outbound nudge |
-| `GET` | `/api/nudges` | List nudges; filter with `user_id` |
-| `GET` | `/api/nudges/{nudge_id}` | Retrieve a nudge |
-| `POST` | `/api/delivery-reports` | Record an outcome from a provider/webhook |
-| `GET` | `/api/recommendation/{user_id}` | Get a user-level recommendation from history |
-| `GET` | `/api/users/{user_id}/analytics` | Get engagement breakdown and recommendation |
+| `GET` | `/api/nudges` | List nudges; optional `user_id`, `skip`, `limit` |
+| `GET` | `/api/nudges/{nudge_id}` | Fetch one nudge |
+| `POST` | `/api/delivery-reports` | Store a report and update current nudge status if stronger |
+| `GET` | `/api/recommendation/{user_id}` | Produce a user-level decision; optional `lookback_days`, `event_id` |
+| `GET` | `/api/users/{user_id}/analytics` | Return score distributions and the user-level decision |
 
-`GET /api/recommendation/{user_id}` supports optional query parameters:
+`lookback_days` accepts integers from `1` through `365`, and defaults to `30`.
 
-- `lookback_days`: integer from `1` to `365`; defaults to `30`.
-- `event_id`: optional event identifier. It must belong to the same user and ensures timing is not before the event.
+### Example: complete API flow
 
-### Example requests
-
-Create an event:
+Create a customer event:
 
 ```bash
 curl -X POST http://localhost:8000/api/events \
@@ -174,12 +248,12 @@ curl -X POST http://localhost:8000/api/events \
   -d '{
     "user_id": "customer_42",
     "event_type": "payment_due",
-    "event_time": "2026-08-03T10:00:00Z",
+    "event_time": "2026-08-04T10:00:00Z",
     "priority": "HIGH"
   }'
 ```
 
-Record a sent nudge:
+Record a historical nudge:
 
 ```bash
 curl -X POST http://localhost:8000/api/nudges \
@@ -187,12 +261,12 @@ curl -X POST http://localhost:8000/api/nudges \
   -d '{
     "user_id": "customer_42",
     "channel": "WHATSAPP",
-    "sent_time": "2026-08-02T19:00:00Z",
+    "sent_time": "2026-08-03T19:00:00Z",
     "status": "DELIVERED"
   }'
 ```
 
-Submit a provider report:
+Submit a provider outcome:
 
 ```bash
 curl -X POST http://localhost:8000/api/delivery-reports \
@@ -204,7 +278,7 @@ curl -X POST http://localhost:8000/api/delivery-reports \
   }'
 ```
 
-Get the event decision:
+Request the decision for the created event:
 
 ```bash
 curl http://localhost:8000/api/events/<event-uuid>/recommendation
@@ -216,80 +290,77 @@ Example response:
 {
   "user_id": "customer_42",
   "event_id": "b1ffb97a-4afd-4e91-8943-6c91b495d032",
-  "recommended_time": "2026-08-03T19:00:00+00:00",
+  "recommended_time": "2026-08-04T19:00:00+00:00",
   "channel": "WHATSAPP",
   "confidence": 0.91,
   "reason": "User has replied to 4 Whatsapp nudges between 6 PM - 9 PM during the last 30 days."
 }
 ```
 
-## Run with Docker (recommended for PostgreSQL)
+## Run locally
 
-### Prerequisites
+### Option A — Docker Compose (recommended)
 
-- Docker Desktop with Docker Compose
-
-### Start the stack
+**Prerequisite:** Docker Desktop with Docker Compose.
 
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-On Windows PowerShell, use:
+On Windows PowerShell:
 
 ```powershell
 Copy-Item .env.example .env
 docker compose up --build
 ```
 
-Services:
+| Service | Local address | Notes |
+| --- | --- | --- |
+| Dashboard | http://localhost:3000 | Next.js production build |
+| API + Swagger | http://localhost:8000 / http://localhost:8000/docs | Alembic runs at container startup |
+| PostgreSQL 16 | `localhost:5432` | Backed by the `pgdata` Docker volume |
 
-| Service | Address |
-| --- | --- |
-| Dashboard | http://localhost:3000 |
-| FastAPI / Swagger | http://localhost:8000 / http://localhost:8000/docs |
-| PostgreSQL | `localhost:5432` |
-
-Migrations run automatically when the backend container starts. To populate demo data:
+Populate the demo database after the stack is healthy:
 
 ```bash
 docker compose exec backend python seed.py
 ```
 
-> `seed.py` deletes existing events and nudges before adding demonstration data. Use it only in a disposable development environment.
+> `seed.py` deletes all existing events and nudges before generating demo records. Run it only against disposable local data.
 
-## Run locally without Docker (SQLite demo mode)
+### Option B — Local processes with SQLite
 
-This option is useful when Docker Desktop is not installed. SQLite is suitable for a local demo and test data only; use PostgreSQL for a shared or production deployment.
+This mode is ideal for a quick demo without Docker. SQLite is not recommended for shared or production deployments.
 
-### Prerequisites
+**Prerequisites:** Python 3.12+, Node.js 20+, and npm.
 
-- Python 3.12+ with the backend dependencies installed
-- Node.js 20+ and npm
-
-### Terminal 1 - backend
+Backend terminal:
 
 ```powershell
 cd backend
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
 $env:DATABASE_URL = "sqlite:///./ict_engine.db"
 python -c "from app.database import Base, engine; import app.models; Base.metadata.create_all(bind=engine)"
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-### Terminal 2 - frontend
+Frontend terminal:
 
 ```powershell
 cd frontend
-npm.cmd install
-npm.cmd run dev
+Copy-Item .env.local.example .env.local
+npm install
+npm run dev
 ```
 
-Open `http://localhost:3000`. Keep both terminals running while using the application.
+Open http://localhost:3000.
 
-### PostgreSQL local development
+### Local PostgreSQL development
 
-For a local PostgreSQL instance, set `DATABASE_URL` in `backend/.env`, then run:
+Set `DATABASE_URL` in `backend/.env`, apply migrations, and start the API:
 
 ```bash
 cd backend
@@ -298,82 +369,83 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-## Dashboard guide
+## Configuration
 
-The dashboard is both a product demo and a manual test surface.
+| Variable | Used by | Default | Purpose |
+| --- | --- | --- | --- |
+| `DATABASE_URL` | Backend | `postgresql+psycopg2://ict_user:ict_password@db:5432/ict_engine` | SQLAlchemy connection URL |
+| `APP_ENV` | Backend | `development` | Environment label |
+| `POSTGRES_USER` | Docker/PostgreSQL | `ict_user` | Database user |
+| `POSTGRES_PASSWORD` | Docker/PostgreSQL | `ict_password` | Database password |
+| `POSTGRES_DB` | Docker/PostgreSQL | `ict_engine` | Database name |
+| `NEXT_PUBLIC_API_BASE_URL` | Frontend | `http://localhost:8000` | API origin used by browser requests |
 
-1. **Create Event**: add the business trigger for a user. A scheduling decision is shown immediately.
-2. **Create Nudge**: record historical or newly sent communications.
-3. **Submit Delivery Report**: update the result of a nudge with data from a provider.
-4. **Recommendation**: retrieve the best learned time and channel for any user.
-5. **Analytics**: inspect score distribution by time window and channel.
-6. **Theme toggle**: use the control in the top-right navigation to switch between dark and light themes.
+Use `.env.example`, `backend/.env.example`, and `frontend/.env.local.example` as development templates. Do not commit real secrets; inject them through your deployment platform or a managed secret store.
 
-For the strongest personalized demo, create several WhatsApp nudges for the same user at around 7 PM, submit `REPLIED` delivery reports, then create an event for that user. The recommended time should favor the evening WhatsApp window and the explanation should reflect the historical engagement.
+## Frontend workspace
 
-## Demo screenshots
+The dashboard is both a product demo and a manual API test surface.
 
-The following screenshots show the NudgeFlow dashboard and its core workflows.
+1. **Create Event** records a business trigger and immediately displays its event-level decision.
+2. **Create Nudge** adds historical or newly sent communications for a user.
+3. **Submit Delivery Report** attaches an outcome to a nudge and refreshes the learning signal.
+4. **Recommendation** retrieves the best learned channel and time for a user.
+5. **Analytics** displays recency-weighted engagement by time bucket and channel.
+6. **Theme toggle** switches between Deep Zinc dark mode and Warm Slate light mode.
 
-| Screenshot | Description |
+For a quick personalised demo, create several `WHATSAPP` nudges for one user around 19:00, mark them `REPLIED`, then create an event for that user. The engine should favour the 6 PM–9 PM bucket and WhatsApp.
+
+## Screenshots
+
+| Workflow | Preview |
 | --- | --- |
-| ![NudgeFlow dashboard - event creation](assests/Screenshot%202026-08-04%20105249.png) | Create an event and view the immediate scheduling decision. |
-| ![NudgeFlow dashboard - nudge creation](assests/Screenshot%202026-08-04%20105328.png) | Record historical or newly sent communications. |
-| ![NudgeFlow dashboard - delivery report](assests/Screenshot%202026-08-04%20105440.png) | Submit a delivery report to update the engagement profile. |
-| ![NudgeFlow dashboard - analytics](assests/Screenshot%202026-08-04%20105457.png) | Inspect engagement by time window and channel. |
+| Event creation and immediate decision | ![Event creation](assests/Screenshot%202026-08-04%20105249.png) |
+| Nudge recording | ![Nudge recording](assests/Screenshot%202026-08-04%20105328.png) |
+| Delivery-report ingestion | ![Delivery report](assests/Screenshot%202026-08-04%20105440.png) |
+| Engagement analytics | ![Analytics](assests/Screenshot%202026-08-04%20105457.png) |
 
-## Testing and quality checks
+## Quality checks
 
-Backend tests use an in-memory SQLite database and require no running PostgreSQL server:
+Backend tests use an in-memory SQLite database; PostgreSQL is not required:
 
 ```bash
 cd backend
 python -m pytest -v
 ```
 
-The suite includes event CRUD, recommendation behavior, analytics, delivery-report updates, invalid status validation, event fallback scheduling, and out-of-order report protection.
+The test suite covers event CRUD, recommendation preference and cold-start behavior, analytics, delivery-status upgrades, invalid status validation, and protection from downgraded out-of-order reports.
 
-Validate the frontend TypeScript project:
-
-```bash
-cd frontend
-npm.cmd exec tsc -- --noEmit
-```
-
-Create an optimized frontend build:
+Validate TypeScript and produce the optimized frontend build:
 
 ```bash
 cd frontend
-npm.cmd run build
+npm exec tsc -- --noEmit
+npm run build
 ```
 
-## Configuration
+## Deployment notes
 
-| Variable | Default | Description |
-| --- | --- | --- |
-| `DATABASE_URL` | PostgreSQL Docker connection | SQLAlchemy connection string |
-| `APP_ENV` | `development` | Application environment label |
-| `POSTGRES_USER` | `ict_user` | Docker PostgreSQL user |
-| `POSTGRES_PASSWORD` | `ict_password` | Docker PostgreSQL password |
-| `POSTGRES_DB` | `ict_engine` | Docker PostgreSQL database |
-| `NEXT_PUBLIC_API_BASE_URL` | `http://localhost:8000` | Backend base URL used by the frontend |
+- The backend Docker image applies `alembic upgrade head` before starting Uvicorn.
+- The frontend Dockerfile builds a Next.js standalone output and serves it on port `3000`.
+- `vercel.json` defines `/api/*` routing to the FastAPI service and all remaining traffic to the Next.js service.
+- For any internet-facing deployment, set `NEXT_PUBLIC_API_BASE_URL` to the public API origin or route `/api` through the same domain.
 
-Never commit real credentials. Use a secret manager or managed platform configuration for production deployments.
+## Production hardening roadmap
 
-## Production considerations
+The codebase is a strong foundation, but these capabilities should be implemented before using it for real customer communications:
 
-This repository establishes the core decisioning workflow. A production implementation should additionally include:
-
-- Authentication, tenant isolation, authorization, and rate limiting.
-- A user profile containing IANA timezone and consent/channel preferences.
-- A queue and scheduler to persist and execute recommended sends.
-- Provider adapters for WhatsApp, SMS, RCS, email, push, and voice.
-- Signed webhook verification, idempotency keys, and retry policies.
-- Delivery-report deduplication and a full provider event audit trail.
-- Observability: structured logs, metrics, tracing, alerts, and dead-letter handling.
-- Encryption, retention controls, PII minimization, and compliance workflows.
-- More robust ranking features, experimentation, suppression rules, and send-frequency caps.
+- Authentication, authorization, tenant isolation, and scoped API keys.
+- Restrictive CORS configuration (the development API currently permits all origins).
+- User profiles with IANA timezone, consent, channel preferences, locale, and suppression state.
+- A durable queue/scheduler that consumes recommendations and executes sends.
+- Provider adapters for WhatsApp, SMS, email, push, and delivery-report webhooks.
+- Webhook signature verification, idempotency keys, retry/backoff policies, and report deduplication.
+- Frequency caps, quiet hours, campaign eligibility, content rules, and experiment assignment.
+- Managed PostgreSQL, backups, connection pooling, migration release strategy, and data retention controls.
+- Structured logs, metrics, distributed traces, alerting, and dead-letter queues.
+- PII minimization, encryption, consent audit records, and compliance processes appropriate to your market.
+- A richer ranking model using event urgency, historical conversion, channel cost, and controlled experimentation.
 
 ## License
 
-This project is provided as an engineering assignment and demonstration implementation. Add the appropriate license before external distribution.
+This repository is an engineering assignment and demonstration implementation. Add an explicit license before external distribution.
