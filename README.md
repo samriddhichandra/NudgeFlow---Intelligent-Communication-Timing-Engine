@@ -377,7 +377,7 @@ uvicorn app.main:app --reload
 | `POSTGRES_USER` | Docker/PostgreSQL | `ict_user` | Database user |
 | `POSTGRES_PASSWORD` | Docker/PostgreSQL | `ict_password` | Database password |
 | `POSTGRES_DB` | Docker/PostgreSQL | `ict_engine` | Database name |
-| `NEXT_PUBLIC_API_BASE_URL` | Frontend | `http://localhost:8000` | API origin used by browser requests |
+| `NEXT_PUBLIC_API_BASE_URL` | Frontend | Local: `http://localhost:8000`; deployed: same-origin `/api` | Optional external API origin used by browser requests |
 
 Use `.env.example`, `backend/.env.example`, and `frontend/.env.local.example` as development templates. Do not commit real secrets; inject them through your deployment platform or a managed secret store.
 
@@ -427,7 +427,7 @@ npm run build
 - The backend Docker image applies `alembic upgrade head` before starting Uvicorn.
 - The frontend Dockerfile builds a Next.js standalone output and serves it on port `3000`.
 - `vercel.json` defines `/api/*` routing to the FastAPI service and all remaining traffic to the Next.js service.
-- For any internet-facing deployment, set `NEXT_PUBLIC_API_BASE_URL` to the public API origin or route `/api` through the same domain.
+- For a same-domain Vercel deployment, leave `NEXT_PUBLIC_API_BASE_URL` unset: browser requests use `/api` and the rewrite forwards them to FastAPI. For a separately hosted API, set it to that public HTTPS API origin—never `localhost`.
 
 ## Production hardening roadmap
 

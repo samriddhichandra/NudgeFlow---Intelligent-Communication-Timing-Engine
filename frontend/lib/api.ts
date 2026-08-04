@@ -1,5 +1,28 @@
+/**
+ * In production, requests stay on the current origin and are forwarded by the
+ * Vercel `/api/*` rewrite to the FastAPI service. This avoids sending a mobile
+ * browser to `localhost`, which would mean the phone itself.
+ *
+ * A full API URL is still supported for deployments where the backend is
+ * hosted separately. During local development, fall back to the local API.
+ */
+const configuredApiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(
+  /\/+$/,
+  ""
+);
+const isLocalApiUrl = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/i.test(
+  configuredApiBaseUrl || ""
+);
+const isLocalBrowser =
+  typeof window !== "undefined" &&
+  ["localhost", "127.0.0.1"].includes(window.location.hostname);
+
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000";
+  configuredApiBaseUrl && (!isLocalApiUrl || isLocalBrowser)
+    ? configuredApiBaseUrl
+    : isLocalBrowser
+      ? "http://localhost:8000"
+      : "";
 
 export type EventPriority = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
 export type NudgeChannel = "WHATSAPP" | "EMAIL" | "SMS" | "PUSH";
