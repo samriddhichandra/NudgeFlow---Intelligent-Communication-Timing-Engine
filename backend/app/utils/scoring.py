@@ -33,14 +33,27 @@ def weighted_score(status: str, sent_time: datetime, now: datetime | None = None
     return engagement_score(status) * recency_weight(sent_time, now)
 
 
-def normalize_confidence(scores: list[float]) -> float:
-    """Normalize the winning score against the total absolute magnitude of
-    all scores to produce a 0-1 confidence value."""
+MIN_OBSERVATIONS_FOR_HIGH_CONFIDENCE = 5
+MAX_HEURISTIC_CONFIDENCE = 0.95
+
+
+def normalize_confidence(scores: list[float], observation_count: int) -> float:
+    """Return a calibrated confidence for a heuristic recommendation.
+
+    A clear winning time bucket alone is not enough to claim certainty: a
+    single positive nudge would otherwise yield 100%. The score distribution
+    is therefore scaled by the amount of observed history and capped below
+    100% because this is not a probabilistic model.
+    """
     if not scores:
         return 0.0
     total = sum(abs(s) for s in scores)
     if total == 0:
         return 0.0
     best = max(scores)
-    confidence = best / total
-    return max(0.0, min(round(confidence, 2), 1.0))
+    distribution_confidence = best / total
+    evidence_factor = min(
+        max(observation_count, 0) / MIN_OBSERVATIONS_FOR_HIGH_CONFIDENCE, 1.0
+    )
+    confidence = distribution_confidence * evidence_factor
+    return max(0.0, min(round(confidence, 2), MAX_HEURISTIC_CONFIDENCE))

@@ -22,10 +22,4 @@ def get_recommendation(
     event = EventService(db).get_event(event_id) if event_id else None
     if event_id and (event is None or event.user_id != user_id):
         raise HTTPException(status_code=404, detail="Event not found for this user")
-    recommendation = service.generate_recommendation(user_id, lookback_days, event)
-    if not recommendation:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No nudge history found for user '{user_id}' in the last {lookback_days} days",
-        )
-    return recommendation
+    return service.generate_recommendation(user_id, lookback_days, event)

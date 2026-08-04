@@ -16,9 +16,13 @@ def _create_nudge(client, user_id, channel, status, hours_ago, hour_of_day):
     return response.json()
 
 
-def test_recommendation_no_history_returns_404(client):
+def test_recommendation_no_history_returns_safe_fallback(client):
     response = client.get("/api/recommendation/nonexistent_user")
-    assert response.status_code == 404
+    assert response.status_code == 200
+    data = response.json()
+    assert data["channel"] == "WHATSAPP"
+    assert data["confidence"] == 0.0
+    assert "No recent nudge history" in data["reason"]
 
 
 def test_recommendation_favors_high_engagement_bucket(client):
@@ -37,7 +41,7 @@ def test_recommendation_favors_high_engagement_bucket(client):
     data = response.json()
 
     assert data["channel"] == "WHATSAPP"
-    assert 0.0 <= data["confidence"] <= 1.0
+    assert 0.0 <= data["confidence"] <= 0.95
     assert "reason" in data
     assert data["user_id"] == user_id
 
@@ -65,6 +69,14 @@ def test_analytics_endpoint(client):
     assert data["total_nudges"] == 1
     assert "engagement_by_bucket" in data
     assert "engagement_by_channel" in data
+
+
+def test_single_observation_does_not_create_full_confidence(client):
+    _create_nudge(client, "low_evidence_user", "WHATSAPP", "REPLIED", 1, 19)
+
+    response = client.get("/api/recommendation/low_evidence_user")
+    assert response.status_code == 200
+    assert 0.0 < response.json()["confidence"] < 1.0
 
 
 def test_event_returns_a_schedule_without_history(client):

@@ -110,26 +110,32 @@ class RecommendationService:
         user_id: str,
         lookback_days: int = LOOKBACK_DAYS,
         event: Event | None = None,
-    ) -> RecommendationResponse | None:
+    ) -> RecommendationResponse:
         now = datetime.now(timezone.utc)
         nudges = self._lookback_nudges(user_id, lookback_days)
 
         if not nudges:
-            if event is None:
-                return None
-            reference = max(now, self._utc(event.event_time))
+            reference = max(now, self._utc(event.event_time)) if event else now
             bucket, recommended_time = next_safe_nudge_time(reference)
-            return RecommendationResponse(
-                user_id=user_id,
-                event_id=event.id,
-                recommended_time=recommended_time,
-                channel=DEFAULT_CHANNEL,
-                confidence=0.0,
-                reason=(
+            if event:
+                reason = (
                     f"No recent nudge history is available for this {event.event_type} event; "
                     f"schedule a default {DEFAULT_CHANNEL.title()} nudge in the next safe "
                     f"window ({bucket.label})."
-                ),
+                )
+            else:
+                reason = (
+                    f"No recent nudge history is available for user {user_id}; "
+                    f"schedule a default {DEFAULT_CHANNEL.title()} nudge in the next safe "
+                    f"window ({bucket.label})."
+                )
+            return RecommendationResponse(
+                user_id=user_id,
+                event_id=event.id if event else None,
+                recommended_time=recommended_time,
+                channel=DEFAULT_CHANNEL,
+                confidence=0.0,
+                reason=reason,
             )
 
         bucket_scores = self._bucket_scores(nudges, now)
@@ -148,7 +154,8 @@ class RecommendationService:
             best_channel = DEFAULT_CHANNEL
 
         confidence = normalize_confidence(
-            [bucket_scores[k]["score"] for k in eligible_buckets if bucket_scores[k]["count"] > 0]
+            [bucket_scores[k]["score"] for k in eligible_buckets if bucket_scores[k]["count"] > 0],
+            observation_count=len(nudges),
         )
 
         reference = max(now, self._utc(event.event_time)) if event else now
