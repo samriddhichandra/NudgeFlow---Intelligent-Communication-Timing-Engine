@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import events, nudges, delivery_reports, recommendation, analytics
+from app.database import initialize_temporary_database
 
 app = FastAPI(
     title="Intelligent Communication Timing Engine",
@@ -27,6 +28,12 @@ app.include_router(
     recommendation.router, prefix="/api/recommendation", tags=["Recommendation"]
 )
 app.include_router(analytics.router, prefix="/api/users", tags=["Analytics"])
+
+
+@app.on_event("startup")
+def initialize_storage() -> None:
+    """Prepare the temporary SQLite schema when deployed without DATABASE_URL."""
+    initialize_temporary_database()
 
 
 @app.get("/health", tags=["Health"])
